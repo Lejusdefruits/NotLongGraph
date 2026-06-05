@@ -1,4 +1,10 @@
 class Sentinel:
+    _instances = {}
+    def __new__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__new__(cls)
+        return cls._instances[cls]
+
     def __init__(self, name):
         self.name = name
 
@@ -6,18 +12,11 @@ class Sentinel:
         return self.name
 
 class _END(Sentinel):
-    def __new__(cls, *args, **kwargs):
-        if not hasattr(cls, "_instance"):
-            cls._instance = super(_END, cls).__new__(cls)
-        return cls._instance
+
     def __init__(self):
         super().__init__("END")
 
 class _START(Sentinel):
-    def __new__(cls, *args, **kwargs):
-        if not hasattr(cls, "_instance"):
-            cls._instance = super(_START, cls).__new__(cls)
-        return cls._instance
     def __init__(self):
         super().__init__("START")
 
