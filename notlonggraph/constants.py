@@ -1,0 +1,1 @@
+# Constantes sentinelles (START, END).
