@@ -8,6 +8,9 @@ class CompiledGraph:
         self.edges = edges
         self.channels = channels
 
+    def __repr__(self):
+        return f"CompiledGraph(nodes={list(self.nodes.keys())}, edges={self.edges}, channels={self.channels})"
+
 class StateGraph:
     def __init__(self, schema):
         self.schema = schema
@@ -32,6 +35,9 @@ class StateGraph:
             raise GraphError("start node does not exist")
         channels = channels_from_schema(self.schema)
         return CompiledGraph(self.nodes, self.edges, channels)
+
+    def __repr__(self):
+        return f"StateGraph(nodes={list(self.nodes.keys())}, edges={self.edges})"
 
 
 if __name__ == "__main__":

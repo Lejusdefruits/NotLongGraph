@@ -1,0 +1,67 @@
+import asyncio
+
+from notlonggraph.constants import START, END
+from notlonggraph.errors import EmptyChannelError
+
+
+def read_state(channels):
+    state = {}
+    for key, channel in channels.items():
+        try:
+             tmp = channel.get()
+        except EmptyChannelError:
+            continue
+        state[key] = tmp
+    return state
+
+def collect(outputs):
+    collected_outputs = {}
+    for curr_dict in outputs:
+        for key, value in curr_dict.items():
+            if key not in collected_outputs:
+                collected_outputs[key] = []
+            collected_outputs[key].append(value)
+    return collected_outputs
+
+def apply_writes(channels, grouped):
+    for key, value in grouped.items():
+        channels[key].update(value)
+
+def end_step(channels):
+    for channel in channels.values():
+        channel.on_step_end()
+
+def successors(edges, done):
+    next_nodes = []
+    for src, dst in edges:
+        if src in done and dst is not END:
+            next_nodes.append(dst)
+    return next_nodes
+
+async def run_node(fn, snapshot):
+    if asyncio.iscoroutinefunction(fn):
+        return await fn(snapshot)
+    else:
+        return await asyncio.to_thread(fn, snapshot)
+
+async def run(nodes, edges, channels, input, recursion_limit=25):
+    channels = {k: ch.fresh_copy() for k, ch in channels.items()}
+    collected_outputs = collect([input])
+    apply_writes(channels, collected_outputs)
+    active = successors(edges, {START})
+    steps = 0
+    while active:
+        if steps >= recursion_limit:
+            raise RecursionError(f"recursion limit of {recursion_limit} exceeded")
+        snapshot = read_state(channels)
+        outputs = []
+        for node in active:
+            fn = nodes[node]
+            output = await run_node(fn, snapshot)
+            outputs.append(output)
+        grouped_outputs = collect(outputs)
+        apply_writes(channels, grouped_outputs)
+        end_step(channels)
+        active = successors(edges, set(active))
+        steps += 1
+    return read_state(channels)

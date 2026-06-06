@@ -22,6 +22,13 @@ class Channel:
     def on_step_end(self) -> None:
         pass
 
+    def __repr__(self):
+        try:
+            value = self.get()
+        except EmptyChannelError:
+            value = "<empty>"
+        return f"{self.__class__.__name__}({value})"
+
 
 class LastValue(Channel):
     def __init__(self, initial_value: Any = Channel._NOTHING) -> None:
