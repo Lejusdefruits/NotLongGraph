@@ -1,7 +1,15 @@
 class NotLongGraphError(Exception):
-    """raised when the graph is invalid"""
-    pass
+    """base class for all framework exceptions"""
+
 
 class GraphError(NotLongGraphError):
-    """base class for graph exceptions"""
-    pass
+    """raised when the graph is invalid (at compile time)"""
+
+
+class InvalidUpdateError(NotLongGraphError):
+    """raised when a channel receives writes it cannot merge
+    (ex: several concurrent writes on a LastValue during one step)"""
+
+
+class EmptyChannelError(NotLongGraphError):
+    """raised when reading a channel that has never been written"""
