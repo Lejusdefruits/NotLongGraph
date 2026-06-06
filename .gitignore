@@ -1,5 +1,3 @@
-
-# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -10,14 +8,12 @@ dist/
 venv/
 env/
 
-# Tests / outils
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# IDE / OS
 .idea/
 .vscode/
 .DS_Store
