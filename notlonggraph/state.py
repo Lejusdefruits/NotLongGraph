@@ -10,3 +10,9 @@ def channels_from_schema(schema):
         else:
             table[k] = LastValue()
     return table
+
+
+if __name__ == "__main__":
+    from tests.test_state import test_state
+    test_state()
+    print("all tests pass")
