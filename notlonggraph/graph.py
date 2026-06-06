@@ -8,6 +8,10 @@ class CompiledGraph:
         self.edges = edges
         self.channels = channels
 
+    async def ainvoke(self, input):
+        from notlonggraph.engine import run
+        return await run(self.nodes, self.edges, self.channels, input)
+
     def __repr__(self):
         return f"CompiledGraph(nodes={list(self.nodes.keys())}, edges={self.edges}, channels={self.channels})"
 
