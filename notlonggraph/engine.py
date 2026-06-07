@@ -44,7 +44,7 @@ async def run_node(fn, snapshot):
     else:
         return await asyncio.to_thread(fn, snapshot)
 
-async def run(nodes, edges, channels, input, recursion_limit=25):
+async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=25):
     channels = {k: ch.fresh_copy() for k, ch in channels.items()}
     collected_outputs = collect([input])
     apply_writes(channels, collected_outputs)
