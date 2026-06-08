@@ -24,8 +24,10 @@ def build():
     g = StateGraph(State)
     g.add_node("double", double)
     g.add_node("add_ten", add_ten)
+    g.add_node("add_ten2", add_ten)
     g.add_edge(START, "double")
-    g.add_edge("double", "add_ten")
+    g.add_edge("double", "add_ten2")
+    g.add_edge("add_ten2", "add_ten")
     g.add_edge("add_ten", END)
     return g.compile()
 
@@ -33,7 +35,7 @@ def build():
 async def main():
     app = build()
     result = await app.ainvoke({"value": 3})
-    print(result)
+    #print(result)
 
 
 if __name__ == "__main__":

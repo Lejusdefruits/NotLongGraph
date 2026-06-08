@@ -89,11 +89,58 @@ def test_recursion_limit() -> None:
         pass
 
 
+class DiamondState(TypedDict):
+    log: Annotated[list, operator.add]
+
+
+def _diamond_double(state):
+    return {"log": ["double"]}
+
+
+async def _diamond_a(state):
+    await asyncio.sleep(0)
+    return {"log": ["a"]}
+
+
+async def _diamond_b(state):
+    await asyncio.sleep(0)
+    return {"log": ["b"]}
+
+
+def _diamond_join(state):
+    return {"log": ["join"]}
+
+
+def test_diamond_fan_in() -> None:
+    g = StateGraph(DiamondState)
+    g.add_node("double", _diamond_double)
+    g.add_node("a", _diamond_a)
+    g.add_node("b", _diamond_b)
+    g.add_node("join", _diamond_join)
+    g.add_edge(START, "double")
+    g.add_edge("double", "a")
+    g.add_edge("double", "b")
+    g.add_edge("a", "join")
+    g.add_edge("b", "join")
+    g.add_edge("join", END)
+    app = g.compile()
+
+    result = asyncio.run(app.ainvoke({"log": []}))
+
+    # join ne doit s'executer qu'une fois malgre les deux edges qui y menent
+    assert result["log"].count("join") == 1
+    # les ecritures paralleles de a et b ont bien ete fusionnees toutes les deux
+    assert "a" in result["log"] and "b" in result["log"]
+    # ordre deterministe (ordre d'insertion des edges)
+    assert result["log"] == ["double", "a", "b", "join"]
+
+
 def test_all() -> None:
     test_linear()
     test_conditional_loop()
     test_conditional_without_path_map()
     test_recursion_limit()
+    test_diamond_fan_in()
 
 
 if __name__ == "__main__":

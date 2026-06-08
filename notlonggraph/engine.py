@@ -43,7 +43,7 @@ def successors(edges, done, conditional_edges, state):
                 dst = path_map[dst]
             if dst is not END:
                 next_nodes.append(dst)
-    return next_nodes
+    return list(dict.fromkeys(next_nodes))
 
 async def run_node(fn, snapshot):
     if asyncio.iscoroutinefunction(fn):
@@ -61,11 +61,8 @@ async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=
         if steps >= recursion_limit:
             raise RecursionError(f"recursion limit of {recursion_limit} exceeded")
         snapshot = read_state(channels)
-        outputs = []
-        for node in active:
-            fn = nodes[node]
-            output = await run_node(fn, snapshot)
-            outputs.append(output)
+        coros = [run_node(nodes[node], snapshot) for node in active]
+        outputs = await asyncio.gather(*coros)
         grouped_outputs = collect(outputs)
         apply_writes(channels, grouped_outputs)
         end_step(channels)
