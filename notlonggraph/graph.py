@@ -9,9 +9,16 @@ class CompiledGraph:
         self.channels = channels
         self.condistional_edges = condistional_edges
 
+    async def astream(self, input):
+        from notlonggraph.engine import run
+        async for state in run(self.nodes, self.edges, self.channels, self.condistional_edges, input):
+            yield state
+
     async def ainvoke(self, input):
         from notlonggraph.engine import run
-        return await run(self.nodes, self.edges, self.channels, self.condistional_edges, input)
+        async for state in run(self.nodes, self.edges, self.channels, self.condistional_edges, input):
+            final = state
+        return final
 
     def __repr__(self):
         return f"CompiledGraph(nodes={list(self.nodes.keys())}, edges={self.edges}, channels={self.channels})"

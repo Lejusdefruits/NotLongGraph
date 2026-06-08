@@ -127,12 +127,81 @@ def test_diamond_fan_in() -> None:
 
     result = asyncio.run(app.ainvoke({"log": []}))
 
-    # join ne doit s'executer qu'une fois malgre les deux edges qui y menent
     assert result["log"].count("join") == 1
-    # les ecritures paralleles de a et b ont bien ete fusionnees toutes les deux
     assert "a" in result["log"] and "b" in result["log"]
-    # ordre deterministe (ordre d'insertion des edges)
     assert result["log"] == ["double", "a", "b", "join"]
+
+
+def _boom(state):
+    raise ValueError("node exploded")
+
+
+def test_node_raises() -> None:
+    g = StateGraph(LoopState)
+    g.add_node("boom", _boom)
+    g.add_edge(START, "boom")
+    g.add_edge("boom", END)
+    app = g.compile()
+
+    try:
+        asyncio.run(app.ainvoke({"counter": 0}))
+        raise AssertionError("expected the error to propagate")
+    except ValueError as exc:
+        assert str(exc) == "node exploded"
+
+
+_sibling_side_effects = []
+
+
+async def _slow_sibling(state):
+    await asyncio.sleep(0.2)
+    _sibling_side_effects.append("done")
+    return {"counter": 1}
+
+
+def test_sibling_cancelled_on_error() -> None:
+    _sibling_side_effects.clear()
+
+    async def scenario():
+        g = StateGraph(LoopState)
+        g.add_node("boom", _boom)
+        g.add_node("slow", _slow_sibling)
+        g.add_edge(START, "boom")
+        g.add_edge(START, "slow")
+        g.add_edge("boom", END)
+        g.add_edge("slow", END)
+        app = g.compile()
+        try:
+            await app.ainvoke({"counter": 0})
+        except ValueError:
+            pass
+        await asyncio.sleep(0.4)  # laisse le temps a un eventuel zombie de finir
+
+    asyncio.run(scenario())
+    assert _sibling_side_effects == []
+
+
+def test_astream_yields_each_wave() -> None:
+    g = StateGraph(LinearState)
+    g.add_node("double", _double)
+    g.add_node("add_ten", _add_ten)
+    g.add_edge(START, "double")
+    g.add_edge("double", "add_ten")
+    g.add_edge("add_ten", END)
+    app = g.compile()
+
+    async def collect_stream():
+        states = []
+        async for state in app.astream({"value": 3}):
+            states.append(state)
+        return states
+
+    states = asyncio.run(collect_stream())
+
+    assert states[0]["value"] == 3
+    assert states[-1]["value"] == 16
+    final = asyncio.run(app.ainvoke({"value": 3}))
+    assert states[-1] == final
 
 
 def test_all() -> None:
@@ -141,6 +210,9 @@ def test_all() -> None:
     test_conditional_without_path_map()
     test_recursion_limit()
     test_diamond_fan_in()
+    test_node_raises()
+    test_sibling_cancelled_on_error()
+    test_astream_yields_each_wave()
 
 
 if __name__ == "__main__":

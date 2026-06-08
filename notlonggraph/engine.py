@@ -55,17 +55,22 @@ async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=
     channels = {k: ch.fresh_copy() for k, ch in channels.items()}
     collected_outputs = collect([input])
     apply_writes(channels, collected_outputs)
+    yield read_state(channels)
     active = successors(edges, {START}, conditional_edges, read_state(channels))
     steps = 0
     while active:
         if steps >= recursion_limit:
             raise RecursionError(f"recursion limit of {recursion_limit} exceeded")
         snapshot = read_state(channels)
-        coros = [run_node(nodes[node], snapshot) for node in active]
-        outputs = await asyncio.gather(*coros)
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [tg.create_task(run_node(nodes[node], snapshot)) for node in active]
+            outputs = [t.result() for t in tasks]
+        except* Exception as eg:
+            raise eg.exceptions[0]
         grouped_outputs = collect(outputs)
         apply_writes(channels, grouped_outputs)
         end_step(channels)
         active = successors(edges, set(active), conditional_edges, read_state(channels))
         steps += 1
-    return read_state(channels)
+        yield read_state(channels)
