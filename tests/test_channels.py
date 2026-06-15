@@ -175,6 +175,220 @@ def test_validated_value() -> None:
         pass
 
 
+def test_dynamic_barrier() -> None:
+    from notlonggraph.channels import DynamicBarrierValue, WaitForNames
+
+    b = DynamicBarrierValue()
+    try:
+        b.get()
+        raise AssertionError("an unarmed barrier must stay closed")
+    except EmptyChannelError:
+        pass
+
+    b.update([WaitForNames({"a", "b"})])     # arm with the names to wait for
+    try:
+        b.get()
+        raise AssertionError("armed but no writer yet: still closed")
+    except EmptyChannelError:
+        pass
+
+    b.update(["a"])
+    try:
+        b.get()
+        raise AssertionError("only one writer arrived: still closed")
+    except EmptyChannelError:
+        pass
+
+    b.update(["b"])
+    assert b.get() is None, "all names seen -> barrier open (non-empty)"
+
+    assert b.consume() is True, "consuming a full barrier clears it and reports a change"
+    try:
+        b.get()
+        raise AssertionError("after consume the barrier closes again")
+    except EmptyChannelError:
+        pass
+    assert b.consume() is False, "nothing left to consume -> no change"
+
+    fresh = b.fresh_copy()
+    assert isinstance(fresh, DynamicBarrierValue)
+    try:
+        fresh.get()
+        raise AssertionError("a fresh barrier must start unarmed")
+    except EmptyChannelError:
+        pass
+
+
+def test_history_value() -> None:
+    from notlonggraph.channels import HistoryValue
+
+    h = HistoryValue()
+    try:
+        h.get()
+        raise AssertionError("reading an empty history should raise EmptyChannelError")
+    except EmptyChannelError:
+        pass
+
+    h.update(["v1"])
+    h.update(["v2"])
+    h.update(["v3"])
+    assert h.get() == "v3", "get() returns the current (latest) value"
+    assert h.snapshot() == ["v1", "v2", "v3"], "snapshot() keeps every past value"
+
+    # snapshot() is a copy: mutating it must not corrupt the channel
+    snap = h.snapshot()
+    snap.append("tampered")
+    assert h.snapshot() == ["v1", "v2", "v3"], "the internal history must stay intact"
+
+    h.update([])                             # empty wave -> ignored
+    assert h.snapshot() == ["v1", "v2", "v3"]
+
+    fresh = h.fresh_copy()
+    assert isinstance(fresh, HistoryValue)
+    assert fresh.snapshot() == [], "a fresh history starts empty"
+
+
+def test_consensus_value() -> None:
+    from notlonggraph.channels import ConsensusValue
+
+    c = ConsensusValue()
+    try:
+        c.get()
+        raise AssertionError("reading an empty consensus should raise EmptyChannelError")
+    except EmptyChannelError:
+        pass
+
+    c.update(["a", "a", "b"])                # majority vote of one wave
+    assert c.get() == "a"
+
+    c.update(["x", "y"])                     # tie -> first value seen wins
+    assert c.get() == "x"
+
+    c.update(["z", "z"])                     # each wave is recomputed, no carry-over
+    assert c.get() == "z"
+
+    fresh = c.fresh_copy()
+    assert isinstance(fresh, ConsensusValue)
+    try:
+        fresh.get()
+        raise AssertionError("a fresh consensus starts empty")
+    except EmptyChannelError:
+        pass
+
+
+def test_expiring_value() -> None:
+    from notlonggraph.channels import ExpiringValue, EphemeralValue
+
+    # ttl=1 must behave exactly like an EphemeralValue
+    e1 = ExpiringValue(1)
+    e2 = EphemeralValue()
+    e1.update(["x"])
+    e2.update(["x"])
+    assert e1.get() == "x" and e2.get() == "x"
+    e1.on_step_end(); e2.on_step_end()
+    assert e1.get() == "x" and e2.get() == "x", "ttl=1 survives the wave it was written in"
+    e1.on_step_end(); e2.on_step_end()
+    for ch in (e1, e2):
+        try:
+            ch.get()
+            raise AssertionError("ttl=1 must vanish on the next wave, like EphemeralValue")
+        except EmptyChannelError:
+            pass
+
+    # ttl=2 stays visible one wave longer
+    e = ExpiringValue(2)
+    e.update(["y"])
+    e.on_step_end()
+    assert e.get() == "y"
+    e.on_step_end()
+    assert e.get() == "y", "ttl=2 is still visible two waves after the write"
+    e.on_step_end()
+    try:
+        e.get()
+        raise AssertionError("ttl=2 must expire eventually")
+    except EmptyChannelError:
+        pass
+
+    # re-writing revives the value for a full ttl
+    e.update(["z"])
+    e.on_step_end()
+    assert e.get() == "z", "a rewrite must re-arm the time-to-live"
+
+    assert isinstance(e.fresh_copy(), ExpiringValue)
+
+
+def test_write_once_value() -> None:
+    from notlonggraph.channels import WriteOnceValue
+
+    w = WriteOnceValue()
+    try:
+        w.get()
+        raise AssertionError("reading an unwritten WriteOnceValue should raise")
+    except EmptyChannelError:
+        pass
+
+    w.update(["first"])
+    assert w.get() == "first"
+    w.update(["second"])                     # locked: ignored
+    assert w.get() == "first", "only the first write counts"
+
+    # an empty wave must not lock the channel
+    w2 = WriteOnceValue()
+    w2.update([])
+    w2.update(["real"])
+    assert w2.get() == "real"
+
+    assert isinstance(w.fresh_copy(), WriteOnceValue)
+
+
+def test_default_value() -> None:
+    from notlonggraph.channels import DefaultValue
+
+    d = DefaultValue(19)
+    assert d.get() == 19, "an unwritten DefaultValue returns its default, never raises"
+
+    d.update([21])
+    assert d.get() == 21, "a write takes precedence over the default"
+
+    try:
+        DefaultValue(0).update([1, 2])
+        raise AssertionError("two writes in one wave should raise InvalidUpdateError")
+    except InvalidUpdateError:
+        pass
+
+    fresh = d.fresh_copy()
+    assert isinstance(fresh, DefaultValue)
+    assert fresh.get() == 19, "fresh_copy must keep the default"
+
+
+def test_rate_limited_value() -> None:
+    from notlonggraph.channels import RateLimitedValue
+
+    r = RateLimitedValue(2)                  # at most one write every 2 waves
+    r.update(["a"])
+    assert r.get() == "a"
+    r.on_step_end()
+    r.update(["b"])                          # still in cooldown -> throttled
+    assert r.get() == "a", "a write during cooldown is dropped"
+    r.on_step_end()
+    r.update(["c"])                          # cooldown elapsed -> accepted
+    assert r.get() == "c"
+
+    # a late write (past the boundary) is still accepted, not throttled forever
+    r.on_step_end(); r.on_step_end(); r.on_step_end()
+    r.update(["d"])
+    assert r.get() == "d", "once the cooldown is over, the next write must pass"
+
+    # every=1 never throttles: it behaves like a LastValue
+    r1 = RateLimitedValue(1)
+    r1.update(["one"])
+    r1.on_step_end()
+    r1.update(["two"])
+    assert r1.get() == "two"
+
+    assert isinstance(r.fresh_copy(), RateLimitedValue)
+
+
 if __name__ == "__main__":
     test_channels()
     print("basic channels (LastValue, BinaryOperatorAggregate): OK")
@@ -185,6 +399,13 @@ if __name__ == "__main__":
         ("EphemeralValue", test_ephemeral_value),
         ("NamedBarrierValue", test_named_barrier),
         ("ValidatedValue", test_validated_value),
+        ("DynamicBarrierValue", test_dynamic_barrier),
+        ("HistoryValue", test_history_value),
+        ("ConsensusValue", test_consensus_value),
+        ("ExpiringValue", test_expiring_value),
+        ("WriteOnceValue", test_write_once_value),
+        ("DefaultValue", test_default_value),
+        ("RateLimitedValue", test_rate_limited_value),
     ]
 
     pending = []

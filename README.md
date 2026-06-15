@@ -62,6 +62,48 @@ print(asyncio.run(app.ainvoke({"value": 3})))   # {'value': 16, 'log': ['double'
 - Fixed and conditional edges, fan-in deduplication, recursion limit.
 - `ainvoke` / `astream`, error propagation and cancellation.
 
+## Channels
+
+A channel is the reducer for one state key: it decides how the writes collected
+during a super-step are merged into a single value. Each one implements the same
+contract — `update(news)`, `get()`, `fresh_copy()` — plus two optional lifecycle
+hooks, `on_step_end()` (called on every channel after each step) and `consume()`
+(called when the engine has acted on the value). `get()` raises
+`EmptyChannelError` when the key has never been written, and `update` raises
+`InvalidUpdateError` on an illegal write.
+
+**Core**
+
+- `LastValue` — keeps the last write; conflicts (two writes in one step) raise.
+- `BinaryOperatorAggregate` — folds the writes with a binary operator (`add`, ...).
+- `Topic` — collects the writes as a list; `accumulate=True` keeps history.
+- `WindowedValue` — like an accumulating list, capped to the last `maxlen` items.
+- `AnyValue` — like `LastValue` but tolerates several writes per step without raising.
+- `UntrackedValue` — a `LastValue` excluded from checkpoints (`_checkpointable = False`).
+
+**Lifecycle (time-aware)**
+
+- `EphemeralValue` — visible only for the step it is written, then cleared.
+- `ExpiringValue` — visible for `ttl` steps, then cleared (`EphemeralValue` is `ttl=1`).
+- `RateLimitedValue` — accepts at most one write every `every` steps, throttles the rest.
+
+**Barriers (fan-in synchronization)**
+
+- `NamedBarrierValue` — stays empty until every expected writer (fixed set) has written.
+- `DynamicBarrierValue` — same, but the expected set is sent at runtime via a
+  `WaitForNames` message; `consume()` re-arms it once released.
+
+**Validation / policy**
+
+- `ValidatedValue` — accepts a write only if it passes a predicate, else raises.
+- `WriteOnceValue` — only the first write counts; later writes are ignored.
+- `DefaultValue` — a `LastValue` that returns a fallback instead of raising when empty.
+- `ConsensusValue` — majority vote among the writes of a single step.
+
+**Time-travel**
+
+- `HistoryValue` — keeps every past value (via `snapshot()`), not just the current one.
+
 ## Run the tests
 
 ```bash

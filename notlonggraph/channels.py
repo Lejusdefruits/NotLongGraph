@@ -1,4 +1,6 @@
 # Channels: merge rule for a state key (reducers)
+import collections
+import copy
 import warnings
 from typing import Any, Callable
 
@@ -21,6 +23,10 @@ class Channel:
 
     def on_step_end(self) -> None:
         pass
+
+    def consume(self) -> bool:
+        """checkpoint"""
+        return False
 
     def __repr__(self):
         try:
@@ -195,7 +201,6 @@ class ValidatedValue(Channel):
 
 
 class AnyValue(Channel):
-    # comme LastValue mais accepte plusieurs writes/vague sans lever
     def __init__(self, initial_value: Any = Channel._NOTHING) -> None:
         self.value = initial_value
 
@@ -218,109 +223,188 @@ class UntrackedValue(LastValue):
     _checkpointable = False
     def fresh_copy(self) -> "UntrackedValue":
         return UntrackedValue()
+
+class WaitForNames:
+    def __init__(self, names) -> None:
+        self.names = set(names)
+
 class DynamicBarrierValue(Channel):
     def __init__(self) -> None:
         self.names = None
         self.seen = set()
 
+    def consume(self) -> bool:
+        if self.names is None:
+            return False
+        if self.seen >= self.names:
+            self.seen = set()
+            return True
+        else:
+            return False
+
     def update(self, news: list) -> None:
-        ...
+        for msg in news:
+            if isinstance(msg, WaitForNames):
+                self.names = msg.names
+            else:
+                self.seen.add(msg)
 
     def get(self) -> Any:
-        ...
+        if self.names is None:
+            raise EmptyChannelError("DynamicBarrierValue has not yet received a WaitForNames message")
+        if self.seen >= self.names:
+            return None
+        else:
+            raise EmptyChannelError(
+                f"DynamicBarrierValue has not yet received all expected updates: {self.seen} / {self.names}"
+            )
 
     def fresh_copy(self) -> "DynamicBarrierValue":
-        ...
+        return DynamicBarrierValue()
 
 class HistoryValue(Channel):
-    # garde tout l'historique, pas juste la valeur courante (base du time-travel)
     def __init__(self) -> None:
-        ...
+        self.history = []
+
+    def snapshot(self) -> list:
+        return copy.deepcopy(self.history)
 
     def update(self, news: list) -> None:
-        ...
+        if len(news) == 0:
+            warnings.warn("HistoryValue received an empty update, ignoring it", stacklevel=2)
+            return
+        self.history.append(news[-1])
 
     def get(self) -> Any:
-        ...
+        if not self.history:
+            raise EmptyChannelError("HistoryValue has never been written")
+        return self.history[-1]
 
     def fresh_copy(self) -> "HistoryValue":
-        ...
+        return HistoryValue()
 
 class ConsensusValue(Channel):
-    # vote majoritaire entre les writes d'une même vague
     def __init__(self) -> None:
-        ...
+        self.consensus = self._NOTHING
 
     def update(self, news: list) -> None:
-        ...
+        if len(news) == 0:
+            warnings.warn("ConsensusValue received an empty update, ignoring it", stacklevel=2)
+            return
+        self.consensus = collections.Counter(news).most_common(1)[0][0]
 
     def get(self) -> Any:
-        ...
+        if self.consensus is self._NOTHING:
+            raise EmptyChannelError("ConsensusValue has never been written")
+        return self.consensus
 
     def fresh_copy(self) -> "ConsensusValue":
-        ...
+        return ConsensusValue()
 
 class ExpiringValue(Channel):
-    # visible ttl vagues puis effacée (EphemeralValue = ttl 1)
     def __init__(self, ttl: int) -> None:
-        ...
+        self.ttl = ttl
+        self.value = self._NOTHING
+        self.remaining_ttl = ttl
+        self.is_expired = False
 
     def update(self, news: list) -> None:
-        ...
+        if len(news) == 0:
+            warnings.warn("ExpiringValue received an empty update, ignoring it", stacklevel=2)
+            return
+        self.value = news[0]
+        self.remaining_ttl = self.ttl
+        self.is_expired = False
 
     def get(self) -> Any:
-        ...
+        if self.value is self._NOTHING:
+            raise EmptyChannelError("ExpiringValue has never been written")
+        return self.value
 
     def on_step_end(self) -> None:
-        ...
+        if self.is_expired:
+            self.is_expired = False
+            self.value = self._NOTHING
+        if self.remaining_ttl > 0:
+            self.remaining_ttl -= 1
+        if self.remaining_ttl == 0:
+            self.is_expired = True
 
     def fresh_copy(self) -> "ExpiringValue":
-        ...
+        return ExpiringValue(self.ttl)
 
 class WriteOnceValue(Channel):
-    # seule la première écriture compte, le reste est ignoré
     def __init__(self) -> None:
-        ...
+        self.value = self._NOTHING
 
     def update(self, news: list) -> None:
-        ...
+        if self.value is self._NOTHING:
+            if len(news) == 0:
+                warnings.warn("WriteOnceValue received an empty update, ignoring it", stacklevel=2)
+                return
+            self.value = news[0]
+        else:
+            warnings.warn("WriteOnceValue received a second update, ignoring it", stacklevel=2)
 
     def get(self) -> Any:
-        ...
+        if self.value is self._NOTHING:
+            raise EmptyChannelError("WriteOnceValue has never been written")
+        return self.value
 
     def fresh_copy(self) -> "WriteOnceValue":
-        ...
+        return WriteOnceValue()
 
 class DefaultValue(Channel):
-    # LastValue qui renvoie un défaut au lieu de lever si vide
     def __init__(self, default: Any) -> None:
-        ...
+        self.default = default
+        self.value = self._NOTHING
 
     def update(self, news: list) -> None:
-        ...
+        nb_elts = len(news)
+        if nb_elts == 0:
+            warnings.warn("DefaultValue received an empty update, ignoring it", stacklevel=2)
+            return
+        if nb_elts == 1:
+            self.value = news[0]
+        else:
+            raise InvalidUpdateError(
+                f"DefaultValue cannot take {nb_elts} writes in a single step"
+            )
 
     def get(self) -> Any:
-        ...
+        if self.value is self._NOTHING:
+            return self.default
+        return self.value
 
     def fresh_copy(self) -> "DefaultValue":
-        ...
+        return DefaultValue(self.default)
 
 class RateLimitedValue(Channel):
-    # au plus un write accepté toutes les every vagues, le reste throttle
     def __init__(self, every: int) -> None:
-        ...
+        self.every = every
+        self.value = self._NOTHING
+        self.counter = every
 
     def update(self, news: list) -> None:
-        ...
+        if self.counter >= self.every:
+            if len(news) >= 1:
+                self.value = news[0]
+                self.counter = 0
+            else:
+                warnings.warn("RateLimitedValue received an empty update", stacklevel=2)
+        else:
+            warnings.warn("RateLimitedValue received an update during cooldown", stacklevel=2)
 
     def get(self) -> Any:
-        ...
+        if self.value is self._NOTHING:
+            raise EmptyChannelError("RateLimitedValue has never been written")
+        return self.value
 
     def on_step_end(self) -> None:
-        ...
+        self.counter += 1
 
     def fresh_copy(self) -> "RateLimitedValue":
-        ...
+        return RateLimitedValue(self.every)
 
 if __name__ == "__main__":
     from tests.test_channels import test_channels
