@@ -2,7 +2,7 @@ import asyncio
 
 from notlonggraph.constants import START, END
 from notlonggraph.errors import EmptyChannelError
-
+from notlonggraph.hooks import Skip
 
 def read_state(channels):
     state = {}
@@ -45,13 +45,22 @@ def successors(edges, done, conditional_edges, state):
                 next_nodes.append(dst)
     return list(dict.fromkeys(next_nodes))
 
-async def run_node(fn, snapshot):
-    if asyncio.iscoroutinefunction(fn):
-        return await fn(snapshot)
-    else:
-        return await asyncio.to_thread(fn, snapshot)
+async def run_node(fn, snapshot, node_name, hooks):
+    contexts = [h.before_node(node_name, snapshot) for h in hooks]
 
-async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=25):
+    hit = next((c for c in contexts if isinstance(c, Skip)), None)
+    if hit is not None:
+        return hit.value
+    if asyncio.iscoroutinefunction(fn):
+        result = await fn(snapshot)
+    else:
+        result = await asyncio.to_thread(fn, snapshot)
+    for h, ctx in zip(hooks, contexts):
+        h.after_node(node_name, result, ctx)
+    return result
+
+async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=25, hooks=None):
+    hooks = hooks or []
     channels = {k: ch.fresh_copy() for k, ch in channels.items()}
     collected_outputs = collect([input])
     apply_writes(channels, collected_outputs)
@@ -64,7 +73,7 @@ async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=
         snapshot = read_state(channels)
         try:
             async with asyncio.TaskGroup() as tg:
-                tasks = [tg.create_task(run_node(nodes[node], snapshot)) for node in active]
+                tasks = [tg.create_task(run_node(nodes[node], snapshot, node, hooks)) for node in active]
             outputs = [t.result() for t in tasks]
         except* Exception as eg:
             raise eg.exceptions[0]
