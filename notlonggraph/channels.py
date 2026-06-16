@@ -7,10 +7,19 @@ from typing import Any, Callable
 from notlonggraph.errors import InvalidUpdateError, EmptyChannelError
 
 
+class _NothingType:
+    def __repr__(self) -> str:
+        return "<NOTHING>"
+    def __copy__(self) -> "_NothingType":
+        return self
+    def __deepcopy__(self, memo) -> "_NothingType":
+        return self
+
 class Channel:
     """base contract: every channel must provide update / get / fresh_copy"""
-    _NOTHING = object()
+    _NOTHING = _NothingType()
     _checkpointable = True
+    mutates_on_step_end = False
 
     def update(self, news: list) -> None:
         raise NotImplementedError()
@@ -124,6 +133,7 @@ class EphemeralValue(Channel):
     def __init__(self) -> None:
         self.value = self._NOTHING
         self.is_new = False
+        self.mutates_on_step_end = True
 
     def update(self, news: list) -> None:
         nb_elts = len(news)
@@ -307,6 +317,7 @@ class ExpiringValue(Channel):
         self.value = self._NOTHING
         self.remaining_ttl = ttl
         self.is_expired = False
+        self.mutates_on_step_end = True
 
     def update(self, news: list) -> None:
         if len(news) == 0:
@@ -384,6 +395,7 @@ class RateLimitedValue(Channel):
         self.every = every
         self.value = self._NOTHING
         self.counter = every
+        self.mutates_on_step_end = True
 
     def update(self, news: list) -> None:
         if self.counter >= self.every:

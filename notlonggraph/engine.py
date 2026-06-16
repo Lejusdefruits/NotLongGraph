@@ -59,14 +59,22 @@ async def run_node(fn, snapshot, node_name, hooks):
         h.after_node(node_name, result, ctx)
     return result
 
-async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=25, hooks=None):
+async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=25, hooks=None, checkpointer=None,
+              start_channels=None, start_active=None, start_steps=0):
     hooks = hooks or []
-    channels = {k: ch.fresh_copy() for k, ch in channels.items()}
-    collected_outputs = collect([input])
-    apply_writes(channels, collected_outputs)
-    yield read_state(channels)
-    active = successors(edges, {START}, conditional_edges, read_state(channels))
-    steps = 0
+    if start_channels is None:
+        channels = {k: ch.fresh_copy() for k, ch in channels.items()}
+        collected_outputs = collect([input])
+        apply_writes(channels, collected_outputs)
+        active = successors(edges, {START}, conditional_edges, read_state(channels))
+        if checkpointer is not None:
+            checkpointer.save(0, channels, set(collected_outputs.keys()), active)
+        yield read_state(channels)
+        steps = 0
+    else:
+        channels = start_channels
+        active = start_active
+        steps = start_steps
     while active:
         if steps >= recursion_limit:
             raise RecursionError(f"recursion limit of {recursion_limit} exceeded")
@@ -82,4 +90,6 @@ async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=
         end_step(channels)
         active = successors(edges, set(active), conditional_edges, read_state(channels))
         steps += 1
+        if checkpointer is not None:
+            checkpointer.save(steps, channels, set(grouped_outputs.keys()), active)
         yield read_state(channels)

@@ -1,6 +1,9 @@
+import copy
+
 from notlonggraph.constants import START, END
 from notlonggraph.errors import GraphError
 from notlonggraph.state import channels_from_schema
+from notlonggraph.checkpoint import MemoryCheckpointer
 
 class CompiledGraph:
     def __init__(self, nodes, edges, channels, conditional_edges, hooks):
@@ -9,17 +12,43 @@ class CompiledGraph:
         self.channels = channels
         self.conditional_edges = conditional_edges
         self.hooks = hooks
+        self.checkpointer = MemoryCheckpointer()
 
     async def astream(self, input):
         from notlonggraph.engine import run
-        async for state in run(self.nodes, self.edges, self.channels, self.conditional_edges, input, hooks=self.hooks):
+        self.checkpointer = MemoryCheckpointer()
+        async for state in run(self.nodes, self.edges, self.channels, self.conditional_edges, input, hooks=self.hooks, checkpointer=self.checkpointer):
             yield state
 
     async def ainvoke(self, input):
         from notlonggraph.engine import run
-        async for state in run(self.nodes, self.edges, self.channels, self.conditional_edges, input, hooks=self.hooks):
+        self.checkpointer = MemoryCheckpointer()
+        async for state in run(self.nodes, self.edges, self.channels, self.conditional_edges, input, hooks=self.hooks, checkpointer=self.checkpointer):
             final = state
         return final
+
+    async def rewind(self, k):
+        from notlonggraph.engine import run
+        cp = self.checkpointer.history[k]
+        channels = copy.deepcopy(cp.channels)
+        async for state in run(
+            self.nodes, self.edges, self.channels, self.conditional_edges,
+            input=None, hooks=self.hooks, checkpointer=None,
+            start_channels=channels, start_active=cp.active, start_steps=cp.step,
+        ):
+            yield state
+
+    async def fork(self, k, new_input):
+        from notlonggraph.engine import run, collect, apply_writes
+        cp = self.checkpointer.history[k]
+        channels = copy.deepcopy(cp.channels)
+        apply_writes(channels, collect([new_input]))
+        async for state in run(
+            self.nodes, self.edges, self.channels, self.conditional_edges,
+            input=None, hooks=self.hooks, checkpointer=None,
+            start_channels=channels, start_active=cp.active, start_steps=cp.step,
+        ):
+            yield state
 
     def __repr__(self):
         return f"CompiledGraph(nodes={list(self.nodes.keys())}, edges={self.edges}, channels={self.channels}, conditional_edges={self.conditional_edges}, hooks={self.hooks})"
