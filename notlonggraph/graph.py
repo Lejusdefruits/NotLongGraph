@@ -27,25 +27,25 @@ class CompiledGraph:
             final = state
         return final
 
-    async def rewind(self, k):
+    async def rewind(self, k, checkpointer=None):
         from notlonggraph.engine import run
         cp = self.checkpointer.history[k]
         channels = copy.deepcopy(cp.channels)
         async for state in run(
             self.nodes, self.edges, self.channels, self.conditional_edges,
-            input=None, hooks=self.hooks, checkpointer=None,
+            input=None, hooks=self.hooks, checkpointer=checkpointer,
             start_channels=channels, start_active=cp.active, start_steps=cp.step,
         ):
             yield state
 
-    async def fork(self, k, new_input):
+    async def fork(self, k, new_input, checkpointer=None):
         from notlonggraph.engine import run, collect, apply_writes
         cp = self.checkpointer.history[k]
         channels = copy.deepcopy(cp.channels)
         apply_writes(channels, collect([new_input]))
         async for state in run(
             self.nodes, self.edges, self.channels, self.conditional_edges,
-            input=None, hooks=self.hooks, checkpointer=None,
+            input=None, hooks=self.hooks, checkpointer=checkpointer,
             start_channels=channels, start_active=cp.active, start_steps=cp.step,
         ):
             yield state

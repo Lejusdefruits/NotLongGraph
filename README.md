@@ -55,6 +55,23 @@ print(asyncio.run(app.ainvoke({"value": 3})))   # {'value': 16, 'log': ['double'
 `add_conditional_edge(src, router, path_map)` routes on the current state, and
 `astream` yields the state after each super-step.
 
+## Time-Travel Debugger
+
+NotLongGraph includes a terminal-based interface (TUI) to inspect the execution of your graphs, built with `textual`.
+
+```python
+from notlonggraph.debugger import serve
+
+app = g.compile()
+serve(app, {"value": 3})
+```
+
+The debugger provides:
+- **Timeline Navigation**: Jump to any super-step in the execution history.
+- **State Inspection**: View the exact state dictionary at each step.
+- **Execution Profiling**: See execution times (in ms) for each node.
+- **Time-Travel Forking**: Inject a JSON patch at any step to fork the execution into an alternate timeline and continue from there.
+
 ## What's implemented
 
 - Typed-schema → channels (`Annotated[..., reducer]`), `LastValue` and reducer channels.

@@ -75,6 +75,8 @@ async def run(nodes, edges, channels, conditional_edges, input, recursion_limit=
         channels = start_channels
         active = start_active
         steps = start_steps
+        if checkpointer is not None:
+            checkpointer.save(steps, channels, set(), active)
     while active:
         if steps >= recursion_limit:
             raise RecursionError(f"recursion limit of {recursion_limit} exceeded")
