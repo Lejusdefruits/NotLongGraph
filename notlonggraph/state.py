@@ -1,5 +1,7 @@
-from typing import get_type_hints, get_origin, get_args, Annotated
-from notlonggraph.channels import LastValue, BinaryOperatorAggregate
+from typing import Annotated, get_args, get_origin, get_type_hints
+
+from notlonggraph.channels import BinaryOperatorAggregate, LastValue
+
 
 def channels_from_schema(schema):
     hints = get_type_hints(schema, include_extras=True)

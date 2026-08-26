@@ -1,8 +1,8 @@
 import operator
 from typing import Annotated, TypedDict
 
+from notlonggraph.channels import BinaryOperatorAggregate, LastValue
 from notlonggraph.state import channels_from_schema
-from notlonggraph.channels import LastValue, BinaryOperatorAggregate
 
 
 class State(TypedDict):

@@ -1,18 +1,18 @@
-import time
 import json
-from textual import on, work
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, Container
-from textual.widgets import Header, Footer, Static, DataTable, Label, Input, OptionList
-from textual.reactive import reactive
-from textual.binding import Binding
+import time
 
 from rich.pretty import Pretty
+from textual import on, work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical
+from textual.reactive import reactive
+from textual.widgets import DataTable, Footer, Header, Input, Label, OptionList, Static
 
-from notlonggraph.engine import read_state
-from notlonggraph.constants import START, END
-from notlonggraph.hooks import Hook
 from notlonggraph.checkpoint import MemoryCheckpointer
+from notlonggraph.constants import END, START
+from notlonggraph.engine import read_state
+from notlonggraph.hooks import Hook
 
 
 class TuiTimingHook(Hook):

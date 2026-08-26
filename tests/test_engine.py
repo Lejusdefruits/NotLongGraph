@@ -2,8 +2,8 @@ import asyncio
 import operator
 from typing import Annotated, TypedDict
 
+from notlonggraph.constants import END, START
 from notlonggraph.graph import StateGraph
-from notlonggraph.constants import START, END
 
 
 class LinearState(TypedDict):

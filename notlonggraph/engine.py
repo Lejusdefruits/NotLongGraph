@@ -1,8 +1,9 @@
 import asyncio
 
-from notlonggraph.constants import START, END
+from notlonggraph.constants import END, START
 from notlonggraph.errors import EmptyChannelError
 from notlonggraph.hooks import Skip
+
 
 def read_state(channels):
     state = {}

@@ -1,9 +1,10 @@
 import copy
 
-from notlonggraph.constants import START, END
+from notlonggraph.checkpoint import MemoryCheckpointer
+from notlonggraph.constants import END, START
 from notlonggraph.errors import GraphError
 from notlonggraph.state import channels_from_schema
-from notlonggraph.checkpoint import MemoryCheckpointer
+
 
 class CompiledGraph:
     def __init__(self, nodes, edges, channels, conditional_edges, hooks):
@@ -39,7 +40,7 @@ class CompiledGraph:
             yield state
 
     async def fork(self, k, new_input, checkpointer=None):
-        from notlonggraph.engine import run, collect, apply_writes
+        from notlonggraph.engine import apply_writes, collect, run
         cp = self.checkpointer.history[k]
         channels = copy.deepcopy(cp.channels)
         apply_writes(channels, collect([new_input]))

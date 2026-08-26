@@ -8,10 +8,8 @@ import asyncio
 import operator
 from typing import Annotated, TypedDict
 
+from notlonggraph.constants import END, START
 from notlonggraph.graph import StateGraph
-from notlonggraph.constants import START, END
-from notlonggraph.checkpoint import MemoryCheckpointer
-from notlonggraph.checkpoint import MemoryCheckpointer
 
 
 class State(TypedDict):

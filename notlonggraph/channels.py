@@ -4,7 +4,7 @@ import copy
 import warnings
 from typing import Any, Callable
 
-from notlonggraph.errors import InvalidUpdateError, EmptyChannelError
+from notlonggraph.errors import EmptyChannelError, InvalidUpdateError
 
 
 class _NothingType:

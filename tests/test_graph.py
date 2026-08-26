@@ -1,10 +1,10 @@
 import operator
 from typing import Annotated, TypedDict
 
-from notlonggraph.graph import StateGraph
-from notlonggraph.constants import START, END
-from notlonggraph.errors import GraphError
 from notlonggraph.channels import BinaryOperatorAggregate, LastValue
+from notlonggraph.constants import END, START
+from notlonggraph.errors import GraphError
+from notlonggraph.graph import StateGraph
 
 
 class State(TypedDict):

@@ -1,7 +1,7 @@
 import operator
 
-from notlonggraph.channels import LastValue, BinaryOperatorAggregate
-from notlonggraph.errors import InvalidUpdateError, EmptyChannelError
+from notlonggraph.channels import BinaryOperatorAggregate, LastValue
+from notlonggraph.errors import EmptyChannelError, InvalidUpdateError
 
 
 def test_channels() -> None:
@@ -277,7 +277,7 @@ def test_consensus_value() -> None:
 
 
 def test_expiring_value() -> None:
-    from notlonggraph.channels import ExpiringValue, EphemeralValue
+    from notlonggraph.channels import EphemeralValue, ExpiringValue
 
     # ttl=1 must behave exactly like an EphemeralValue
     e1 = ExpiringValue(1)
@@ -285,9 +285,11 @@ def test_expiring_value() -> None:
     e1.update(["x"])
     e2.update(["x"])
     assert e1.get() == "x" and e2.get() == "x"
-    e1.on_step_end(); e2.on_step_end()
+    e1.on_step_end()
+    e2.on_step_end()
     assert e1.get() == "x" and e2.get() == "x", "ttl=1 survives the wave it was written in"
-    e1.on_step_end(); e2.on_step_end()
+    e1.on_step_end()
+    e2.on_step_end()
     for ch in (e1, e2):
         try:
             ch.get()
@@ -375,7 +377,9 @@ def test_rate_limited_value() -> None:
     assert r.get() == "c"
 
     # a late write (past the boundary) is still accepted, not throttled forever
-    r.on_step_end(); r.on_step_end(); r.on_step_end()
+    r.on_step_end()
+    r.on_step_end()
+    r.on_step_end()
     r.update(["d"])
     assert r.get() == "d", "once the cooldown is over, the next write must pass"
 

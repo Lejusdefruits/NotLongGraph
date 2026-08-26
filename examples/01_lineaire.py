@@ -2,8 +2,8 @@ import asyncio
 import operator
 from typing import Annotated, TypedDict
 
+from notlonggraph.constants import END, START
 from notlonggraph.graph import StateGraph
-from notlonggraph.constants import START, END
 
 
 class State(TypedDict):
@@ -35,7 +35,7 @@ def build():
 async def main():
     app = build()
     result = await app.ainvoke({"value": 3})
-    #print(result)
+    print(result)
 
 
 if __name__ == "__main__":
